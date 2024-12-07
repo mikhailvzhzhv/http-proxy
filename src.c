@@ -1,35 +1,32 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-#include <netdb.h>
-#include <malloc.h>
+#include "header.h"
 
-#define BUFFER_SIZE 8192
-#define PORT 80
 
-// Структура для передачи данных в поток
-typedef struct {
-    int client_socket;
-} ThreadArgs;
+void setup_sockaddr(struct sockaddr_in* s) {
+    s->sin_family = AF_INET;
+    s->sin_port = htons(PORT);
+    s->sin_addr.s_addr = INADDR_ANY;
+}
 
-// Функция для обработки запросов
+
 void *handle_client(void *args) {
     int err;
+
     ThreadArgs *thread_args = (ThreadArgs *)args;
     int client_socket = thread_args->client_socket;
     free(thread_args);
 
-    printf("get args\n");
+    err = pthread_detach(pthread_self());
+    if (err != SUCCESS) {
+        fprintf(stderr, "handle_client: pthread_detach() failed: %s\n", strerror(err));
+        pthread_exit((void *)EXIT_FAILURE);
+    }
 
     char buffer[BUFFER_SIZE];
     int bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_received == -1) {
         perror("handle_client: recv() failed");
         close(client_socket);
-        return NULL;
+        pthread_exit((void *)EXIT_FAILURE);
     }
     buffer[bytes_received] = '\0';
 
@@ -44,7 +41,7 @@ void *handle_client(void *args) {
         const char *response = "HTTP/1.0 405 Method Not Allowed\r\n\r\n";
         send(client_socket, response, strlen(response), 0);
         close(client_socket);
-        return NULL;
+        pthread_exit((void *)EXIT_FAILURE);
     }
 
     // Извлекаем хост и путь из URL
@@ -64,8 +61,8 @@ void *handle_client(void *args) {
 
     err = getaddrinfo(host, "http", &hints, &res);
     if (err != 0) {
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(err));
-        exit(1);
+        fprintf(stderr, "handle_client: getaddrinfo() error: %s\n", gai_strerror(err));
+        pthread_exit((void *)EXIT_FAILURE);
     }
 
     // struct hostent *server = gethostbyname(host);
@@ -79,20 +76,20 @@ void *handle_client(void *args) {
     printf("get host by name!\n");
 
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
+    if (server_socket == ERROR) {
         perror("handle_client: socket() failed");
         close(client_socket);
-        return NULL;
+        pthread_exit((void *)EXIT_FAILURE);
     }
 
     printf("socket!\n");
 
     err = connect(server_socket, res->ai_addr,res->ai_addrlen);
-    if (err < 0) {
+    if (err != SUCCESS) {
         perror("handle_client: connect() failed");
         close(client_socket);
         close(server_socket);
-        return NULL;
+        pthread_exit((void *)EXIT_FAILURE);
     }
 
     printf("connect!\n");
@@ -112,70 +109,60 @@ void *handle_client(void *args) {
 
     printf("done!\n");
 
-    return NULL;
+    pthread_exit(EXIT_SUCCESS);
 }
 
 
-int main() {
+int get_client_socket(int server_socket) {
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    // ECONNREFUSED errno
+    int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+    if (client_socket == ERROR) {
+        perror("get_client_socket: accept() failed");
+    }
+
+    return client_socket;
+}
+
+
+int create_client_handler(int client_socket) {
     int err;
-    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
-        perror("main: socket() failed");
-        return EXIT_FAILURE;
+    ThreadArgs *args = (ThreadArgs*) malloc(sizeof(ThreadArgs));
+    if (args == NULL) {
+        fprintf(stderr, "create_client_handler: malloc() failed\n");
+        return ERROR;
+    }
+    args->client_socket = client_socket;
+    pthread_t thread;
+    err = pthread_create(&thread, NULL, handle_client, args);
+    if (err != SUCCESS) {
+        fprintf(stderr, "create_client_handler: pthread_create() failed: %s\n", strerror(err));
+        free(args);
     }
 
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    return err;
+}
 
-    err = bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (err < 0) {
-        perror("main: bind() failed");
-        close(server_socket);
-        return EXIT_FAILURE;
-    }
 
-    err = listen(server_socket, 10);
-    if (err < 0) {
-        perror("main: listen() failed");
-        close(server_socket);
-        return EXIT_FAILURE;
-    }
-
+int start_proxy(int server_socket) {
+    int err = SUCCESS;
     printf("Proxy server running on port %d...\n", PORT);
 
     while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        printf("wait...\n");
-        int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
-        if (client_socket < 0) {
-            perror("main: accept() failed");
+        int client_socket = get_client_socket(server_socket);
+        if (client_socket == ERROR) {
+            fprintf(stderr, "start_proxy: get_client_socket() failed\n");
+            err = ERROR;
             break;
         }
-
-        ThreadArgs *args = (ThreadArgs*) malloc(sizeof(ThreadArgs));
-        if (args == NULL) {
-            fprintf(stderr, "main: malloc() failed\n");
-            break;
-        }
-        args->client_socket = client_socket;
-        pthread_t thread;
-        err = pthread_create(&thread, NULL, handle_client, args);
-        if (err != 0) {
-            fprintf(stderr, "main: pthread_create() failed: %s\n", strerror(err));
-            break;
-        }
-
-        err = pthread_detach(thread);
-        if (err != 0) {
-            fprintf(stderr, "main: pthread_detach() failed: %s\n", strerror(err));
+        err = create_client_handler(client_socket);
+        if (err != SUCCESS) {
+            fprintf(stderr, "start_proxy: create_client_handler() failed\n");
             break;
         }
     }
-
     close(server_socket);
 
-    return EXIT_SUCCESS;
+    return ERROR;
 }
