@@ -1,6 +1,5 @@
 #include "header.h"
 
-
 int main() {
     int err;
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -10,7 +9,7 @@ int main() {
     }
 
     struct sockaddr_in server_addr;
-    setup_sockaddr(&server_addr);
+    init_sockaddr(&server_addr);
 
     err = bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
     if (err != SUCCESS) {
@@ -26,10 +25,24 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    err = start_proxy(server_socket);
-    if (err != SUCCESS) {
-        return EXIT_FAILURE;
-    }
+    printf("Proxy server running on port %d...\n", PORT);
 
-    return EXIT_SUCCESS;
+    while (1) {
+        int client_socket = get_client_socket(server_socket);
+        if (client_socket == ERROR) {
+            if (errno == EMFILE) {
+                continue;
+            }
+            fprintf(stderr, "main: get_client_socket() failed\n");
+            break;
+        }
+        err = create_client_handler(client_socket);
+        if (err != SUCCESS) {
+            fprintf(stderr, "main: create_client_handler() failed\n");
+            close(client_socket);
+        }
+    }
+    close(server_socket);
+
+    return SUCCESS;
 }

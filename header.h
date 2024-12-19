@@ -8,11 +8,17 @@
 #include <pthread.h>
 #include <netdb.h>
 #include <malloc.h>
+#include <errno.h>
 
 #define PORT 80
 #define BACKLOG 10
 
-#define BUFFER_SIZE 8192
+#define BUFFER_SIZE 4096
+#define PATH_LEN 1024
+#define HOST_LEN 1024
+#define METHOD_LEN 8
+#define URL_LEN 1024
+#define HTTP_VERSION_LEN 10
 
 #define SUCCESS 0
 #define ERROR -1
@@ -21,8 +27,7 @@ typedef struct {
     int client_socket;
 } ThreadArgs;
 
-void setup_sockaddr(struct sockaddr_in* s);
+void init_sockaddr(struct sockaddr_in* s);
 void *handle_client(void *args);
 int get_client_socket(int server_socket);
 int create_client_handler(int client_socket);
-int start_proxy(int server_socket);
