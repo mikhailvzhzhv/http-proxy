@@ -35,7 +35,7 @@ void handle_socket_close(void* arg) {
 
 void *handle_client(void *args) {
     int err;
-    
+
     ThreadArgs *thread_args = (ThreadArgs *)args;
     int client_socket = thread_args->client_socket;
     free(thread_args);
@@ -89,7 +89,6 @@ void *handle_client(void *args) {
         freeaddrinfo(res);
         pthread_exit((void *)EXIT_FAILURE);
     }
-    pthread_cleanup_push(handle_socket_close, (void *)&server_socket);
 
     pthread_cleanup_push(handle_socket_close, (void *)&server_socket);
 
