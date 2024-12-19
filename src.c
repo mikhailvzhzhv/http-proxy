@@ -29,17 +29,12 @@ ssize_t read_all(int socket, char* buffer) {
 
 void handle_socket_close(void* arg) {
     int fd = *(int*) arg;
-    printf("handler %d\n", fd);
-    int err = close(fd);
-    if (err != SUCCESS) {
-        printf("handle_socket_close err\n");
-    }
+    close(fd);
 }
 
 
 void *handle_client(void *args) {
     int err;
-    int res;
 
     ThreadArgs *thread_args = (ThreadArgs *)args;
     int client_socket = thread_args->client_socket;
@@ -61,39 +56,28 @@ void *handle_client(void *args) {
     }
 
     char method[METHOD_LEN], url[URL_LEN], http_version[HTTP_VERSION_LEN];
-    res = sscanf(buffer, "%s %s %s", method, url, http_version);
-    if (res < 0) {
-        fprintf(stderr, "res = %d\n", res);
-        perror("handle_client: sscanf() failed");
-        pthread_exit((void *)EXIT_FAILURE);
-    }
+    sscanf(buffer, "%s %s %s", method, url, http_version);
 
-    err = strcmp(method, "GET");
-    if (err != SUCCESS) {
+    if (strcmp(method, "GET") != SUCCESS) {
         const char *response = "HTTP/1.0 405 Method Not Allowed\r\n\r\n";
-        err = send(client_socket, response, strlen(response), 0);
-        if (err == ERROR) {
-            perror("handle_client: send() failed");
-        }
+        send(client_socket, response, strlen(response), 0);
         pthread_exit((void *)EXIT_FAILURE);
     }
 
-    char host[HOST_LEN], path[PATH_LEN];
-    res = sscanf(url, "http://%1023[^/]%1023s", host, path);
-    if (res != 2) {
+    char host[HOST_LEN], path[HOST_LEN];
+    if (sscanf(url, "http://%1023[^/]%1023s", host, path) != 2) {
         snprintf(path, sizeof(path), "/");
     }
 
     printf("cs: %d; host: %s\n", client_socket, host);
     printf("cs: %d; path: %s\n", client_socket, path);
 
-    // Подключаемся к целевому серверу
-    struct addrinfo hints, *addr_info;
+    struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    
-    err = getaddrinfo(host, "http", &hints, &addr_info);
+
+    err = getaddrinfo(host, "http", &hints, &res);
     if (err != SUCCESS) {
         fprintf(stderr, "handle_client: getaddrinfo() error: %s\n", gai_strerror(err));
         pthread_exit((void *)EXIT_FAILURE);
@@ -102,19 +86,20 @@ void *handle_client(void *args) {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == ERROR) {
         perror("handle_client: socket() failed");
-        freeaddrinfo(addr_info);
+        freeaddrinfo(res);
         pthread_exit((void *)EXIT_FAILURE);
     }
+
     pthread_cleanup_push(handle_socket_close, (void *)&server_socket);
 
-    err = connect(server_socket, addr_info->ai_addr, addr_info->ai_addrlen);
+    err = connect(server_socket, res->ai_addr,res->ai_addrlen);
     if (err != SUCCESS) {
         perror("handle_client: connect() failed");
-        freeaddrinfo(addr_info);
+        freeaddrinfo(res);
         pthread_exit((void *)EXIT_FAILURE);
     }
+    freeaddrinfo(res);
 
-    // Формируем запрос к серверу
     char req_buf[BUFFER_SIZE];
     snprintf(req_buf, sizeof(req_buf), "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
     err = send(server_socket, req_buf, strlen(req_buf), 0);
@@ -123,7 +108,6 @@ void *handle_client(void *args) {
         pthread_exit((void *)EXIT_FAILURE);
     }
 
-    // Читаем ответ от сервера и перенаправляем клиенту
     char resp_buf[BUFFER_SIZE];
     bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), 0);
     while (bytes_received > 0) {
@@ -135,8 +119,8 @@ void *handle_client(void *args) {
         bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), 0);
     }
 
-    pthread_cleanup_pop(SUCCESS);
-    pthread_cleanup_pop(SUCCESS);
+    pthread_cleanup_pop(1);
+    pthread_cleanup_pop(1);
 
     printf("cs: %d; done!\n", client_socket);
 

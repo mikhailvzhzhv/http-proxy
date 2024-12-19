@@ -1,5 +1,6 @@
 #include "header.h"
 
+
 int main() {
     int err;
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -29,10 +30,8 @@ int main() {
 
     while (1) {
         int client_socket = get_client_socket(server_socket);
-        printf("main: client_socket %d created\n", client_socket);
         if (client_socket == ERROR) {
             if (errno == EMFILE) {
-                printf("errno == EMFILE\n");
                 continue;
             }
             fprintf(stderr, "main: get_client_socket() failed\n");
@@ -41,13 +40,10 @@ int main() {
         err = create_client_handler(client_socket);
         if (err != SUCCESS) {
             fprintf(stderr, "main: create_client_handler() failed\n");
-            break;
+            close(client_socket);
         }
     }
-    err = close(server_socket);
-    if (err != SUCCESS) {
-        perror("main: close() failed");
-    }
+    close(server_socket);
 
     return SUCCESS;
 }

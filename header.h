@@ -16,7 +16,7 @@
 #define PORT 80
 #define BACKLOG 10
 
-#define BUFFER_SIZE 8192
+#define BUFFER_SIZE 4096
 #define PATH_LEN 1024
 #define HOST_LEN 1024
 #define METHOD_LEN 8

@@ -1,16 +1,21 @@
-TARGET_2 = http-proxy
-SRCS_2 = main.c src.c
+TARGET = http-proxy
+SRCS = main.c src.c
+HEADER = header.h
+BUILD_DIR = build
 
-CC=gcc
-RM=rm
-CFLAGS= -g -Wall
-LIBS=-lpthread
-INCLUDE_DIR="."
+CC = gcc
+RM = rm
+CFLAGS = -g -Wall
+LIBS = -lpthread
+INCLUDE_DIR = "."
 
-all: ${TARGET_2}
+all: ${BUILD_DIR} ${BUILD_DIR}/${TARGET}
 
-${TARGET_2}: header.h ${SRCS_2}
-	${CC} ${CFLAGS} -I${INCLUDE_DIR} ${SRCS_2} ${LIBS} -o ${TARGET_2}
+${BUILD_DIR}:
+	mkdir -p ${BUILD_DIR}
+
+${BUILD_DIR}/${TARGET}: ${HEADER} ${SRCS}
+	${CC} ${CFLAGS} -I${INCLUDE_DIR} ${SRCS} ${LIBS} -o ${BUILD_DIR}/${TARGET}
 
 clean:
-	${RM} -f *.o ${TARGET_2}
+	${RM} -rf ${BUILD_DIR}
