@@ -8,18 +8,38 @@ void init_sockaddr(struct sockaddr_in* s) {
 }
 
 
-ssize_t read_all(int socket, char* buffer) {
+void change_request(char* req_buf, char* request) {
+    const char *connection_header = "Connection: ";
+    const char *connection_pos = strstr(request, connection_header);
+    if (connection_pos == NULL) {
+        strcpy(req_buf, request);
+        return;
+    }
+    size_t prefix_len = connection_pos - request;
+    strncpy(req_buf, request, prefix_len);
+    req_buf[prefix_len] = '\0';
+    strcat(req_buf, "Connection: close\r\n");
+    const char *end_of_connection = strstr(connection_pos, "\r\n");
+    if (end_of_connection != NULL) {
+        strcat(req_buf, end_of_connection + 2);
+    } else {
+        strcat(req_buf, connection_pos + strlen(connection_header));
+    }
+}
+
+
+ssize_t read_all(int socket, char* request) {
     ssize_t total_read = 0;
     while (total_read < BUFFER_SIZE - 1) {
-        ssize_t bytes_read = recv(socket, buffer + total_read, BUFFER_SIZE - total_read - 1, 0);
+        ssize_t bytes_read = recv(socket, request + total_read, BUFFER_SIZE - total_read - 1, 0);
         if (bytes_read <= 0) {
             return bytes_read;
         }
 
         total_read += bytes_read;
-        buffer[total_read] = '\0';
+        request[total_read] = '\0';
 
-        if (strstr(buffer, "\r\n\r\n") != NULL) {
+        if (strstr(request, "\r\n\r\n") != NULL) {
             break;
         }
     }
@@ -33,6 +53,18 @@ void handle_socket_close(void* arg) {
 }
 
 
+void handle_addrinfo_free(void* arg) {
+    struct addrinfo* res = (struct addrinfo*) arg;
+    freeaddrinfo(res);
+}
+
+
+void handle_attr_free(void* arg) {
+    pthread_attr_t attr = *(pthread_attr_t*) arg;
+    pthread_attr_destroy(&attr);
+}
+
+
 void *handle_client(void *args) {
     int err;
 
@@ -42,21 +74,19 @@ void *handle_client(void *args) {
 
     pthread_cleanup_push(handle_socket_close, (void *)&client_socket);
 
-    err = pthread_detach(pthread_self());
-    if (err != SUCCESS) {
-        fprintf(stderr, "handle_client: pthread_detach() failed: %s\n", strerror(err));
-        pthread_exit((void *)EXIT_FAILURE);
-    }
-
-    char buffer[BUFFER_SIZE];
-    ssize_t bytes_received = read_all(client_socket, buffer);
+    char request[BUFFER_SIZE];
+    memset(request, 0, sizeof(request));
+    ssize_t bytes_received = read_all(client_socket, request);
     if (bytes_received == ERROR) {
         perror("handle_client: recv() failed");
         pthread_exit((void *)EXIT_FAILURE);
     }
 
     char method[METHOD_LEN], url[URL_LEN], http_version[HTTP_VERSION_LEN];
-    sscanf(buffer, "%s %s %s", method, url, http_version);
+    memset(method, 0, sizeof(method));
+    memset(url, 0, sizeof(url));
+    memset(http_version, 0, sizeof(http_version));
+    sscanf(request, "%s %s %s", method, url, http_version);
 
     if (strcmp(method, "GET") != SUCCESS) {
         const char *response = "HTTP/1.0 405 Method Not Allowed\r\n\r\n";
@@ -65,13 +95,15 @@ void *handle_client(void *args) {
     }
 
     char host[HOST_LEN], path[HOST_LEN];
+    memset(host, 0, sizeof(host));
+    memset(path, 0, sizeof(path));
     if (sscanf(url, "http://%1023[^/]%1023s", host, path) != 2) {
         snprintf(path, sizeof(path), "/");
     }
 
     printf("cs: %d; host: %s\n", client_socket, host);
     printf("cs: %d; path: %s\n", client_socket, path);
-
+    
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -83,10 +115,11 @@ void *handle_client(void *args) {
         pthread_exit((void *)EXIT_FAILURE);
     }
 
+    pthread_cleanup_push(handle_addrinfo_free, (void *)res);
+
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == ERROR) {
         perror("handle_client: socket() failed");
-        freeaddrinfo(res);
         pthread_exit((void *)EXIT_FAILURE);
     }
 
@@ -95,13 +128,12 @@ void *handle_client(void *args) {
     err = connect(server_socket, res->ai_addr,res->ai_addrlen);
     if (err != SUCCESS) {
         perror("handle_client: connect() failed");
-        freeaddrinfo(res);
         pthread_exit((void *)EXIT_FAILURE);
     }
-    freeaddrinfo(res);
 
     char req_buf[BUFFER_SIZE];
-    snprintf(req_buf, sizeof(req_buf), "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
+    memset(req_buf, 0, sizeof(req_buf));
+    change_request(req_buf, request);
     err = send(server_socket, req_buf, strlen(req_buf), 0);
     if (err == ERROR) {
         perror("handle_client: send() failed");
@@ -109,6 +141,7 @@ void *handle_client(void *args) {
     }
 
     char resp_buf[BUFFER_SIZE];
+    memset(resp_buf, 0, sizeof(resp_buf));
     bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), 0);
     while (bytes_received > 0) {
         err = send(client_socket, resp_buf, bytes_received, MSG_NOSIGNAL);
@@ -119,6 +152,7 @@ void *handle_client(void *args) {
         bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), 0);
     }
 
+    pthread_cleanup_pop(1);
     pthread_cleanup_pop(1);
     pthread_cleanup_pop(1);
 
@@ -135,12 +169,12 @@ int get_client_socket(int server_socket) {
     if (client_socket == ERROR) {
         perror("get_client_socket: accept() failed");
     }
-
+    
     return client_socket;
 }
 
 
-int create_client_handler(int client_socket) {
+int create_client_handler(int client_socket, pthread_attr_t* attr) {
     int err;
     ThreadArgs *args = (ThreadArgs*) malloc(sizeof(ThreadArgs));
     if (args == NULL) {
@@ -149,7 +183,7 @@ int create_client_handler(int client_socket) {
     }
     args->client_socket = client_socket;
     pthread_t thread;
-    err = pthread_create(&thread, NULL, handle_client, args);
+    err = pthread_create(&thread, attr, handle_client, args);
     if (err != SUCCESS) {
         fprintf(stderr, "create_client_handler: pthread_create() failed: %s\n", strerror(err));
         free(args);

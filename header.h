@@ -33,4 +33,6 @@ typedef struct {
 void init_sockaddr(struct sockaddr_in* s);
 void *handle_client(void *args);
 int get_client_socket(int server_socket);
-int create_client_handler(int client_socket);
+int create_client_handler(int client_socket, pthread_attr_t* attr);
+void handle_attr_free(void* arg);
+void handle_socket_close(void* arg);
