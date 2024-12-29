@@ -5,7 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <pthread.h>
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -14,7 +13,7 @@
 #include <errno.h>
 
 #define PORT 80
-#define BACKLOG 10
+#define BACKLOG 5
 
 #define BUFFER_SIZE 4096
 #define PATH_LEN 1024
@@ -26,13 +25,6 @@
 #define SUCCESS 0
 #define ERROR -1
 
-typedef struct {
-    int client_socket;
-} ThreadArgs;
-
 void init_sockaddr(struct sockaddr_in* s);
 void *handle_client(void *args);
 int get_client_socket(int server_socket);
-int create_client_handler(int client_socket, pthread_attr_t* attr);
-void handle_attr_free(void* arg);
-void handle_socket_close(void* arg);

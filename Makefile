@@ -1,6 +1,6 @@
 TARGET = http-proxy
-SRCS = main.c src.c
-HEADER = header.h
+SRCS = main.c src.c thread_pool.c
+HEADER = header.h thread_pool.h
 BUILD_DIR = build
 
 CC = gcc
