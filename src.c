@@ -56,6 +56,30 @@ ssize_t read_all(int socket, char* request) {
 }
 
 
+int recv_all(int *client_socket, int *server_socket) {
+    char resp_buf[BUFFER_SIZE] = {0};
+    ssize_t bytes_received;
+    int err = SUCCESS;
+
+    bytes_received = recv(*server_socket, resp_buf, sizeof(resp_buf), MSG_NOSIGNAL);
+    while (bytes_received > 0) {
+        err = send(*client_socket, resp_buf, bytes_received, MSG_NOSIGNAL);
+        if (err == ERROR) {
+            perror("recv_all: send() failed");
+            break;
+        }
+        bytes_received = recv(*server_socket, resp_buf, sizeof(resp_buf), MSG_NOSIGNAL);
+        if (bytes_received == ERROR) {
+            perror("recv_all: recv() failed");
+            err = ERROR;
+            break;
+        }
+    }
+
+    return err;
+}
+
+
 void *handle_client(void *args) {
     int err;
     TaskQueue* task_queue = (TaskQueue*)args;
@@ -143,21 +167,7 @@ void *handle_client(void *args) {
             continue;
         }
 
-        char resp_buf[BUFFER_SIZE] = {0};
-        bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), MSG_NOSIGNAL);
-        while (bytes_received > 0) {
-            err = send(client_socket, resp_buf, bytes_received, MSG_NOSIGNAL);
-            if (err == ERROR) {
-                perror("handle_client: send() failed");
-                break;
-            }
-            bytes_received = recv(server_socket, resp_buf, sizeof(resp_buf), MSG_NOSIGNAL);
-            if (bytes_received == ERROR) {
-                perror("handle_client: recv() failed");
-                err = ERROR;
-                break;
-            }
-        }
+        err = recv_all(&client_socket, &server_socket);
         if (err == ERROR) {
             close(client_socket);
             close(server_socket);
