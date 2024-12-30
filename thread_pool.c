@@ -73,7 +73,7 @@ Task task_queue_get(TaskQueue* task_queue) {
     int err;
     err = pthread_mutex_lock(&task_queue->lock);
     if (err != SUCCESS) {
-        fprintf(stderr, "pthread_mutex_lock err\n");
+        fprintf(stderr, "task_queue_get: pthread_mutex_lock() failed: %s\n", strerror(err));
         return t;
     }
 
@@ -81,18 +81,18 @@ Task task_queue_get(TaskQueue* task_queue) {
         int oldstate;
         err = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
         if (err != SUCCESS) {
-            fprintf(stderr, "pthread_setcancelstate err\n");
+            fprintf(stderr, "task_queue_get: pthread_setcancelstate() failed: %s\n", strerror(err));
             return t;
         }
         err = pthread_cond_wait(&task_queue->cond, &task_queue->lock);
         if (err != SUCCESS) {
-            fprintf(stderr, "task_queue_get: pthread_cond_wait() err\n");
+            fprintf(stderr, "task_queue_get: pthread_cond_wait() failed: %s\n", strerror(err));
             pthread_mutex_unlock(&task_queue->lock);
             return t;
         }
         pthread_setcancelstate(oldstate, NULL);
         if (err != SUCCESS) {
-            fprintf(stderr, "pthread_setcancelstate err\n");
+            fprintf(stderr, "task_queue_get: pthread_setcancelstate() failed: %s\n", strerror(err));
             return t;
         }
     }
@@ -104,7 +104,7 @@ Task task_queue_get(TaskQueue* task_queue) {
     err = pthread_cond_broadcast(&task_queue->cond);
     if (err != SUCCESS) {
         close(task.client_socket);
-        fprintf(stderr, "pthread_cond_broadcast err\n");
+        fprintf(stderr, "pthread_cond_broadcast : %s\n", strerror(err));
         pthread_mutex_unlock(&task_queue->lock);
         return t;
     }
@@ -112,7 +112,7 @@ Task task_queue_get(TaskQueue* task_queue) {
     err = pthread_mutex_unlock(&task_queue->lock);
     if (err != SUCCESS) {
         close(task.client_socket);
-        fprintf(stderr, "pthread_mutex_unlock err\n");
+        fprintf(stderr, "pthread_mutex_unlock : %s\n", strerror(err));
         return t;
     }
     
@@ -127,7 +127,7 @@ int task_queue_destroy(TaskQueue* task_queue) {
     }
     err = pthread_mutex_lock(&task_queue->lock);
     if (err != SUCCESS) {
-        fprintf(stderr, "task_queue_destroy: pthread_mutex_lock() err\n");
+        fprintf(stderr, "task_queue_destroy: pthread_mutex_lock() failed: %s\n", strerror(err));
         return ERROR;
     }
 
@@ -141,14 +141,14 @@ int task_queue_destroy(TaskQueue* task_queue) {
 
     err = pthread_cond_destroy(&task_queue->cond);
     if (err != SUCCESS) {
-        fprintf(stderr, "task_queue_destroy: pthread_cond_destroy() err\n");
+        fprintf(stderr, "task_queue_destroy: pthread_cond_destroy() failed: %s\n", strerror(err));
         pthread_mutex_unlock(&task_queue->lock);
         return ERROR;
     }
 
     err = pthread_mutex_unlock(&task_queue->lock);
     if (err != SUCCESS) {
-        fprintf(stderr, "task_queue_destroy: pthread_mutex_unlock() err\n");
+        fprintf(stderr, "task_queue_destroy: pthread_mutex_unlock() failed: %s\n", strerror(err));
         return ERROR;
     }
 
@@ -191,7 +191,7 @@ int thread_pool_destroy(ThreadPool* thread_pool) {
     for (int i = 0; i < THREADS_COUNT; i++) {
         err = pthread_cancel(thread_pool->threads[i]);
         if (err != SUCCESS) {
-            fprintf(stderr, "pthread_cancel err\n");
+            fprintf(stderr, "thread_pool_destroy: pthread_cancel() failed: %s\n", strerror(err));
             return ERROR;
         }
     }

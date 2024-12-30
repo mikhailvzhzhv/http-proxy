@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <string.h>
 
 #define SUCCESS 0
 #define ERROR -1
