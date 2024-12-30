@@ -96,7 +96,7 @@ void *handle_client(void *args) {
         }
 
         char host[HOST_LEN] = {0};
-        char path[HOST_LEN] = {0};
+        char path[PATH_LEN] = {0};
         if (sscanf(url, "http://%1023[^/]%1023s", host, path) != 2) {
             snprintf(path, sizeof(path), "/");
         }
@@ -125,11 +125,11 @@ void *handle_client(void *args) {
         }
 
         err = connect(server_socket, res->ai_addr, res->ai_addrlen);
+        freeaddrinfo(res);
         if (err != SUCCESS) {
             perror("handle_client: connect() failed");
             close(client_socket);
             close(server_socket);
-            freeaddrinfo(res);
             continue;
         }
 
@@ -140,7 +140,6 @@ void *handle_client(void *args) {
             perror("handle_client: send() failed");
             close(client_socket);
             close(server_socket);
-            freeaddrinfo(res);
             continue;
         }
 
@@ -162,13 +161,11 @@ void *handle_client(void *args) {
         if (err == ERROR) {
             close(client_socket);
             close(server_socket);
-            freeaddrinfo(res);
             continue;
         }
 
         close(client_socket);
         close(server_socket);
-        freeaddrinfo(res);
 
         printf("cs: %d; done!\n", client_socket);
     }
