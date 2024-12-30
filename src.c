@@ -37,10 +37,10 @@ void change_request(char* req_buf, char* request) {
 }
 
 
-ssize_t read_all(int socket, char* request) {
+ssize_t read_all(int* socket, char* request) {
     ssize_t total_read = 0;
     while (total_read < BUFFER_SIZE - 1) {
-        ssize_t bytes_read = recv(socket, request + total_read, BUFFER_SIZE - total_read - 1, MSG_NOSIGNAL);
+        ssize_t bytes_read = recv(*socket, request + total_read, BUFFER_SIZE - total_read - 1, MSG_NOSIGNAL);
         if (bytes_read <= 0) {
             return bytes_read;
         }
@@ -100,7 +100,7 @@ void *handle_client(void *args) {
         }
 
         char request[BUFFER_SIZE] = {0};
-        ssize_t bytes_received = read_all(client_socket, request);
+        ssize_t bytes_received = read_all(&client_socket, request);
         if (bytes_received == ERROR) {
             perror("handle_client: recv() failed");
             close(client_socket);
